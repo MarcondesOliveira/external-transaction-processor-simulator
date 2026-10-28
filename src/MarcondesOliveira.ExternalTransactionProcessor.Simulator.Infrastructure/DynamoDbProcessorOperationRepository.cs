@@ -55,7 +55,9 @@ public sealed class DynamoDbProcessorOperationRepository(
             },
             cancellationToken);
 
-        return response.Item.Count == 0 ? null : FromItem(response.Item);
+        return response.Item is null || response.Item.Count == 0
+            ? null
+            : FromItem(response.Item);
     }
 
     private static CreateOperationResult Compare(

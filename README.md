@@ -33,7 +33,7 @@ dotnet test --no-build --disable-build-servers -m:1
 dotnet format --no-restore --verify-no-changes
 ```
 
-The serial build configuration avoids the build-server instability encountered during development. The current suite contains 9 unit tests, 3 API integration tests and 4 contract tests.
+The serial build configuration avoids the build-server instability encountered during development. The current suite contains 9 unit tests, 5 integration tests and 4 contract tests. Repository regression tests exercise DynamoDB responses with both null and empty items, creation, idempotent replay and conflicting requests through a stub AWS client without network access.
 
 ## Configuration
 
