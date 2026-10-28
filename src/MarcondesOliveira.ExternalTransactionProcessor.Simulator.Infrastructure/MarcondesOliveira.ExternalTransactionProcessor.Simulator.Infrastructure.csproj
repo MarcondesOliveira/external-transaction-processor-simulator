@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.DynamoDBv2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application.csproj" />
+  </ItemGroup>
+</Project>

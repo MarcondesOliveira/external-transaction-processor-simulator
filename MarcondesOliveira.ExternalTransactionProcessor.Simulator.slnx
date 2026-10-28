@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application.csproj" />
+    <Project Path="src/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Host/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Host.csproj" />
+    <Project Path="src/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Infrastructure/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.ContractTests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.ContractTests.csproj" />
+    <Project Path="tests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.IntegrationTests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.IntegrationTests.csproj" />
+    <Project Path="tests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.UnitTests/MarcondesOliveira.ExternalTransactionProcessor.Simulator.UnitTests.csproj" />
+  </Folder>
+</Solution>
