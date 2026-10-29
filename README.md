@@ -34,7 +34,7 @@ dotnet test --no-build --disable-build-servers -m:1
 dotnet format --no-restore --verify-no-changes
 ```
 
-The serial build configuration avoids the build-server instability encountered during development. The current suite contains 13 unit tests, 6 integration tests and 4 contract tests (23 total). Repository regression tests exercise DynamoDB responses with both null and empty items, creation, idempotent replay and conflicting requests through a stub AWS client without network access. Timeout tests use a controlled `TimeProvider` to verify the full configured delay without waiting in real time, cancellation, validation before delay and zero persistence calls.
+The serial build configuration avoids the build-server instability encountered during development. The current suite contains 13 unit tests, 13 integration tests and 4 contract tests (30 total). Repository regression tests exercise DynamoDB responses with both null and empty items, creation, idempotent replay and conflicting requests through a stub AWS client without network access. Timeout tests use a controlled `TimeProvider` to verify the full configured delay without waiting in real time, cancellation, validation before delay and zero persistence calls. Logging tests cover correlated submissions, replay, validation/conflict, delayed timeout, infrastructure failure, worker delivery/failure, malformed Stream images and ignored non-INSERT records.
 
 ## Configuration
 
@@ -134,9 +134,54 @@ One item stores both the accepted operation and its idempotency data. Conditiona
 
 TTL defaults to 24 hours and applies to the entire simulator operation. DynamoDB TTL deletion is asynchronous, so expiration does not guarantee physical deletion at exactly 24 hours. The implementation continues to recognize the item while it remains in the table. Once removed, that key may create a new operation. This retention is for temporary portfolio demonstrations, not a permanent processing ledger.
 
+## Operational logs
+
+The HTTP API emits ASP.NET JSON console logs. `SimulatorSubmissionHandled`
+records transaction ID, current `RequestCorrelationId`, processor ID when known
+and HTTP status (202, 400, 409 or the controlled delayed 503). This event does
+not distinguish a new acceptance from an idempotent replay; both return the
+same processor operation. A replay's request correlation may differ from the
+original operation correlation used later by the worker. The existing simulated
+timeout warning is retained as an additional diagnostic event.
+
+`SimulatorSubmissionFailed` records unexpected submission failures with original
+exception/root-cause types and stack trace. A fixed-message exception without an
+inner exception then preserves server failure without passing provider messages
+to automatic runtime logs. In the Development HTTP test host, middleware converts
+that exception to HTTP 500; it is not thrown through `HttpClient` to the test.
+
+The worker uses native `ILambdaLogger` events:
+
+- `SimulatorCallbackStarted`: an operation has been decoded and delivery is starting.
+- `SimulatorCallbackDelivered`: the callback endpoint acknowledged delivery with
+  a successful HTTP status. This does not confirm that the main application's
+  asynchronous Callback Handler has already applied the result.
+- `SimulatorCallbackFailed`: decoding or delivery failed. Available identifiers,
+  exception/root-cause types and stack trace are logged, then a fixed-message
+  exception without an inner exception still fails the invocation for the existing
+  Stream retry/failure-destination policy. A batch is not partially acknowledged.
+
+Worker events include `StreamEventId`, callback `EventId`, `TransactionId`,
+`CorrelationId` and `ProcessorTransactionId` when decoding succeeds. Malformed
+images remain traceable by Stream event ID when available. The custom logs omit
+payloads, amount, account, callback URL, external reference and idempotency key.
+The failure records deliberately omit original exception messages; use the
+correlated types and stack trace for diagnosis.
+
+Terraform must keep the HTTP API Lambda's runtime logging format `Text` because
+ASP.NET already emits JSON (`State` properties), while enabling native `JSON`
+logging on the worker for searchable top-level parameters. These Stage 12 changes
+require a reviewed deployment before appearing in AWS.
+
+After deployment, manually create a transaction through the main API using Bruno
+or Swagger, then inspect the simulator API and worker log groups for the same
+transaction ID. Confirm submission 202, callback start/delivery, and the final
+result through the main API GET. Failure, timeout and duplicate scenarios are
+separate checks; a successful transaction does not validate their runtime logs.
+
 ## Current deployment status and limits
 
-The simulator baseline is deployed and has been validated against AWS for persistence, duplicate/conflicting submissions, callback retries, and successful/rejected/failed results through the main callback pipeline. The new `timeout-` branch has passed local tests but has not yet been committed or deployed at the time of this update. No resources are provisioned by cloning, building or running the tests.
+The simulator baseline and `timeout-` branch are deployed and have been validated against AWS for persistence, duplicate/conflicting submissions, callback retries, successful/rejected/failed results through the main callback pipeline, and real Request Handler HTTP timeout with retry exhaustion/DLQ. The Stage 12 log changes described above still require their own deployment and manual validation. No resources are provisioned by cloning, building or running the tests.
 
 The main callback pipeline is deployed. HTTPS is used without HMAC in the current agreed diagram and implementation. Deployment and end-to-end evidence are maintained in the infrastructure repository.
 

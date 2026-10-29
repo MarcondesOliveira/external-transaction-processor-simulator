@@ -33,21 +33,45 @@ public sealed class WorkerFunction
 
         foreach (var record in records.EnumerateArray())
         {
-            if (!record.TryGetProperty("eventName", out var eventName) ||
-                !string.Equals(eventName.GetString(), "INSERT", StringComparison.Ordinal))
+            ProcessorOperation? operation = null;
+            string? streamEventId = null;
+            try
             {
-                continue;
+                if (record.TryGetProperty("eventID", out var identifier))
+                {
+                    streamEventId = identifier.GetString();
+                }
+
+                if (!record.TryGetProperty("eventName", out var eventName) ||
+                    !string.Equals(eventName.GetString(), "INSERT", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                operation = FromStreamImage(
+                    record.GetProperty("dynamodb").GetProperty("NewImage"));
+
+                context.Logger.LogInformation(
+                    "{EventName} streamEventId={StreamEventId} eventId={EventId} transactionId={TransactionId} correlationId={CorrelationId} processorTransactionId={ProcessorTransactionId} outcome={Outcome}",
+                    "SimulatorCallbackStarted", streamEventId, operation.CallbackEventId,
+                    operation.TransactionId, operation.CorrelationId, operation.ProcessorTransactionId, operation.Outcome);
+
+                await service.ProcessAsync(operation, CancellationToken.None);
+                context.Logger.LogInformation(
+                    "{EventName} streamEventId={StreamEventId} eventId={EventId} transactionId={TransactionId} correlationId={CorrelationId} processorTransactionId={ProcessorTransactionId} outcome={Outcome}",
+                    "SimulatorCallbackDelivered", streamEventId, operation.CallbackEventId,
+                    operation.TransactionId, operation.CorrelationId, operation.ProcessorTransactionId, operation.Outcome);
             }
-
-            var operation = FromStreamImage(
-                record.GetProperty("dynamodb").GetProperty("NewImage"));
-
-            context.Logger.LogInformation(
-                "Delivering callback for transaction {TransactionId} with simulated outcome {Outcome}.",
-                operation.TransactionId,
-                operation.Outcome);
-
-            await service.ProcessAsync(operation, CancellationToken.None);
+            catch (Exception exception)
+            {
+                context.Logger.LogError(
+                    "{EventName} streamEventId={StreamEventId} eventId={EventId} transactionId={TransactionId} correlationId={CorrelationId} processorTransactionId={ProcessorTransactionId} errorType={ErrorType} causeType={CauseType} stackTrace={StackTrace}",
+                    "SimulatorCallbackFailed", streamEventId, operation?.CallbackEventId,
+                    operation?.TransactionId, operation?.CorrelationId, operation?.ProcessorTransactionId,
+                    exception.GetType().Name, exception.GetBaseException().GetType().Name, exception.StackTrace);
+                // Still fail the invocation for the existing Stream retry/failure-destination policy.
+                throw new InvalidOperationException("Simulator callback failed; inspect the correlated failure event.");
+            }
         }
     }
 

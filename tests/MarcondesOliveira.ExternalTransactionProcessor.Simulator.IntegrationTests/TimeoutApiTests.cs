@@ -4,6 +4,7 @@ using MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Simulator.Testing;
 
 namespace MarcondesOliveira.ExternalTransactionProcessor.Simulator.IntegrationTests;
@@ -15,9 +16,11 @@ public sealed class TimeoutApiTests
     {
         using var clock = new ControlledTimeProvider();
         var repository = new NoPersistenceRepository();
+        using var logs = new SubmissionLogProvider();
         using var factory = new SimulatorFactory();
         using var application = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
         {
+            services.AddSingleton<ILoggerProvider>(logs);
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(clock);
             services.RemoveAll<IProcessorOperationRepository>();
@@ -45,6 +48,9 @@ public sealed class TimeoutApiTests
         var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
         Assert.Equal("SIMULATED_TIMEOUT", error?.Code);
         Assert.Equal(0, repository.Calls);
+        var handled = Assert.Single(logs.Events, entry => entry.ContainsKey("EventName"));
+        Assert.Equal("SimulatorSubmissionHandled", handled["EventName"]);
+        Assert.Equal(503, handled["HttpStatus"]);
     }
 
     private sealed class NoPersistenceRepository : IProcessorOperationRepository
