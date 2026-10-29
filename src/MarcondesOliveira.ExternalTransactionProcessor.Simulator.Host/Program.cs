@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Amazon.DynamoDBv2;
 using Amazon.Lambda.AspNetCoreServer.Hosting;
+using ExternalProcessor.Simulator;
 using MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application;
 using MarcondesOliveira.ExternalTransactionProcessor.Simulator.Infrastructure;
 
@@ -65,11 +66,19 @@ app.MapPost(
                 return Results.Conflict(
                     new ErrorResponse("IDEMPOTENCY_CONFLICT", exception.Message));
             }
+            catch (SimulatedSubmissionTimeoutException exception)
+            {
+                SubmissionLog.SimulatedTimeout(app.Logger, request.TransactionId, correlationId);
+                return Results.Json(
+                    new ErrorResponse("SIMULATED_TIMEOUT", exception.Message),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         })
     .Accepts<SubmitTransactionRequest>("application/json")
     .Produces<AcceptedTransactionResponse>(StatusCodes.Status202Accepted)
     .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
     .Produces<ErrorResponse>(StatusCodes.Status409Conflict)
+    .Produces<ErrorResponse>(StatusCodes.Status503ServiceUnavailable)
     .WithName("SubmitExternalTransaction");
 
 app.Run();

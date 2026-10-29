@@ -20,6 +20,13 @@ public sealed class SubmissionService(
             throw new SubmissionValidationException(errors);
         }
 
+        if (request.Destination.AccountId.StartsWith("timeout-", StringComparison.OrdinalIgnoreCase))
+        {
+            // Longer than the Request Handler's 10-second HTTP timeout, before any side effect.
+            await Task.Delay(TimeSpan.FromSeconds(12), timeProvider, cancellationToken);
+            throw new SimulatedSubmissionTimeoutException();
+        }
+
         var acceptedAt = timeProvider.GetUtcNow();
         var operation = new ProcessorOperation(
             idempotencyKey,

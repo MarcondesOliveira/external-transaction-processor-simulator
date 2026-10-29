@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../Shared/ControlledTimeProvider.cs" Link="ControlledTimeProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application/MarcondesOliveira.ExternalTransactionProcessor.Simulator.Application.csproj" />

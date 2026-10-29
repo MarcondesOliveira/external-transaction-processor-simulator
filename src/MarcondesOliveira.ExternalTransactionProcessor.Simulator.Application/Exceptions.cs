@@ -10,6 +10,9 @@ public sealed class SubmissionValidationException(
 public sealed class SubmissionIdempotencyConflictException()
     : Exception("The idempotency key was already used with a different request.");
 
+public sealed class SimulatedSubmissionTimeoutException()
+    : Exception("Simulated submission exceeded the request client's timeout; no operation was accepted.");
+
 public sealed class CallbackDeliveryException(
     string message,
     Exception? innerException = null)
