@@ -36,6 +36,22 @@ dotnet format --no-restore --verify-no-changes
 
 The serial build configuration avoids the build-server instability encountered during development. The current suite contains 13 unit tests, 13 integration tests and 4 contract tests (30 total). Repository regression tests exercise DynamoDB responses with both null and empty items, creation, idempotent replay and conflicting requests through a stub AWS client without network access. Timeout tests use a controlled `TimeProvider` to verify the full configured delay without waiting in real time, cancellation, validation before delay and zero persistence calls. Logging tests cover correlated submissions, replay, validation/conflict, delayed timeout, infrastructure failure, worker delivery/failure, malformed Stream images and ignored non-INSERT records.
 
+## Continuous integration
+
+The `CI` workflow runs on pull requests targeting `main`, pushes to `main`, and
+manual dispatch. It restores dependencies, verifies formatting, builds Release
+with the configured .NET analyzers/warnings as errors, runs unit/integration/contract
+tests and audits direct/transitive NuGet dependencies. Reported vulnerabilities
+fail the job; the JSON report is printed in the job log for investigation.
+
+The workflow follows the validated application CI pattern: actions pinned to
+commit SHAs, read-only repository permissions and no persisted checkout token.
+It requests no AWS credentials or OIDC token, publishes no deployment package
+and does not modify AWS. Tests use controlled substitutes, including controlled
+time for timeout scenarios. No live callback destination or manual Bruno/Swagger
+test is needed for this CI-only change. Branch protection is separate and is not
+enabled by adding the workflow.
+
 ## Configuration
 
 | Variable | Used by | Default / requirement |
