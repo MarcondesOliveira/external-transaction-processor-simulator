@@ -46,11 +46,36 @@ fail the job; the JSON report is printed in the job log for investigation.
 
 The workflow follows the validated application CI pattern: actions pinned to
 commit SHAs, read-only repository permissions and no persisted checkout token.
-It requests no AWS credentials or OIDC token, publishes no deployment package
+The validation job requests no AWS credentials or OIDC token, publishes no deployment package
 and does not modify AWS. Tests use controlled substitutes, including controlled
 time for timeout scenarios. No live callback destination or manual Bruno/Swagger
 test is needed for this CI-only change. Branch protection is separate and is not
 enabled by adding the workflow.
+
+### Versioned Lambda artifact
+
+After validation succeeds on `main` (push or manual dispatch), a separate job
+publishes the Host in Release for `linux-arm64`, framework-dependent, without
+ReadyToRun or an apphost. Pull requests do not generate deployment artifacts.
+GitHub Actions retains the bundle for seven days:
+
+- `external-transaction-processor-simulator.zip`: one Lambda package shared by API and worker;
+- `external-transaction-processor-simulator.zip.sha256`: SHA-256 verification file;
+- `build-manifest.json`: full source commit, SDK, runtime/architecture, hexadecimal
+  and Base64 ZIP hashes, and future S3 key `<service>/<commit>/<service>.zip`.
+
+The artifact name includes commit, run ID and attempt without overwriting earlier
+bundles. Build identity is traceable; byte-for-byte reproducibility is not claimed.
+The Base64 `sourceCodeHash` refers to the inner Lambda ZIP, not GitHub's outer
+download archive/digest. Extract the downloaded Actions bundle and run
+`sha256sum --check external-transaction-processor-simulator.zip.sha256` inside it.
+
+`.github/scripts/package.sh` validates the checkout SHA, refuses an existing output
+directory and checks `ExternalProcessor.Simulator.dll`, `.deps.json` and
+`.runtimeconfig.json` before zipping. Both existing Lambda handlers remain unchanged;
+their entry points are in the same assembly and use the same deployment ZIP.
+The package job requests no AWS credentials/OIDC and performs no S3 upload or
+deployment. No new Bruno/Swagger test is required until a reviewed deployment.
 
 ## Configuration
 
