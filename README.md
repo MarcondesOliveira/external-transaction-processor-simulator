@@ -1,5 +1,13 @@
 # External Transaction Processor Simulator
 
+[Complete project overview](https://github.com/MarcondesOliveira/async-transaction-infrastructure)
+· [From-zero reproduction guide](https://github.com/MarcondesOliveira/async-transaction-infrastructure/blob/main/docs/reproduce.md)
+
+This README covers the independent processor simulator (HTTP API and Stream
+worker). The central guide explains the five repositories, owner provisioning,
+GitHub/OIDC setup and teardown. Routine delivery expects an existing stack.
+All operations are synthetic, not real transfers.
+
 Independent .NET 10 simulator for the external processor in the Async Transaction Processing portfolio project.
 
 The API accepts a transaction, persists an idempotent operation in its own DynamoDB table and returns `202 Accepted`. A separate Lambda invocation consumes the table's DynamoDB Stream and sends the final result to the supplied HTTPS callback URL.
@@ -32,6 +40,7 @@ dotnet restore
 dotnet build --no-restore --disable-build-servers -m:1
 dotnet test --no-build --disable-build-servers -m:1
 dotnet format --no-restore --verify-no-changes
+python3 -m unittest discover -s tests/delivery -v
 ```
 
 The serial build configuration avoids the build-server instability encountered during development. The current suite contains 13 unit tests, 13 integration tests and 4 contract tests (30 total). Repository regression tests exercise DynamoDB responses with both null and empty items, creation, idempotent replay and conflicting requests through a stub AWS client without network access. Timeout tests use a controlled `TimeProvider` to verify the full configured delay without waiting in real time, cancellation, validation before delay and zero persistence calls. Logging tests cover correlated submissions, replay, validation/conflict, delayed timeout, infrastructure failure, worker delivery/failure, malformed Stream images and ignored non-INSERT records.
@@ -49,7 +58,7 @@ commit SHAs, read-only repository permissions and no persisted checkout token.
 The validation job requests no AWS credentials or OIDC token, publishes no deployment package
 and does not modify AWS. Tests use controlled substitutes, including controlled
 time for timeout scenarios. No live callback destination or manual Bruno/Swagger
-test is needed for this CI-only change. Branch protection is separate and is not
+test is needed to run CI. Branch protection is separate and is not
 enabled by adding the workflow.
 
 ### Versioned Lambda artifact
@@ -81,8 +90,9 @@ manual HTTP checks belong after its deployment completes.
 ### Automated delivery through OIDC
 
 `Deliver Simulator` (`.github/workflows/publish.yml`) runs after successful CI
-from a push to this repository's `main`. PRs, forks, manual CI and failed/cancelled
-CI do not automatically deploy. It publishes the exact verified CI bundle without
+from a push to this repository's `main`. PR runs, manual CI, failed/cancelled CI
+and runs from another head repository do not automatically deploy.
+It publishes the exact verified CI bundle without
 rebuilding and dispatches the central Terraform workflow with the full commit and
 `service=external-transaction-processor-simulator`.
 
@@ -142,7 +152,9 @@ end-to-end smoke. The exact central run URL is recorded in logs and summary.
 After success you can manually POST `/transactions` through the main API's Swagger
 or Bruno with synthetic data/new `Idempotency-Key`, then GET the resulting ID
 until `SUCCEEDED/APPROVED`. This exercises the simulator API and callback worker.
-The first real automatic simulator delivery still needs validation after push.
+Automatic main-push delivery has been validated on AWS, including both Lambda
+packages/statuses, a final synthetic transaction and success propagated back to
+this repository. The owner also verified the resulting main-API transaction.
 
 Orchestration tests make no GitHub/AWS requests and also run in CI:
 `python3 -m unittest discover -s tests/delivery -v`.
@@ -151,8 +163,8 @@ References: [AWS OIDC action](https://github.com/aws-actions/configure-aws-crede
 [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
 
 The published ZIP is shared by the simulator API and worker. Publication alone
-updates neither function; both keep their existing deployed version until a
-separate reviewed Terraform deployment.
+updates neither function by itself; `Deliver Simulator` then invokes central
+Terraform delivery to update and verify both functions.
 
 ## Configuration
 
@@ -212,6 +224,13 @@ Replace `callbackUrl` with an endpoint you control before testing callback deliv
 Expected response: `202 Accepted` with `processorTransactionId`, `transactionId`, `status: ACCEPTED` and `acceptedAt`. Repeating the same key and body returns the original accepted operation without creating another Stream insertion. Changing the body while keeping the same key returns `409 IDEMPOTENCY_CONFLICT`. Missing or invalid headers return `400 VALIDATION_ERROR`.
 
 Use Bruno for this test: the current Swagger document describes the body and responses but does not expose input controls for the two required custom headers.
+
+This direct call tests processor acceptance. For the complete demonstration,
+create a transaction through the **main Transaction API** and let its Request
+Handler submit it. If a direct simulator call targets the main callback URL,
+the transaction/correlation IDs must match an existing main transaction. An
+arbitrary sample UUID will not create that transaction and may cause callback
+processing failures even though simulator acceptance returned `202`.
 
 ## Simulation scenarios
 
@@ -288,8 +307,8 @@ correlated types and stack trace for diagnosis.
 
 Terraform must keep the HTTP API Lambda's runtime logging format `Text` because
 ASP.NET already emits JSON (`State` properties), while enabling native `JSON`
-logging on the worker for searchable top-level parameters. These Stage 12 changes
-require a reviewed deployment before appearing in AWS.
+logging on the worker for searchable top-level parameters. The deployed lab
+includes this logging configuration; future code changes need their own delivery.
 
 After deployment, manually create a transaction through the main API using Bruno
 or Swagger, then inspect the simulator API and worker log groups for the same
@@ -299,7 +318,12 @@ separate checks; a successful transaction does not validate their runtime logs.
 
 ## Current deployment status and limits
 
-The simulator baseline and `timeout-` branch are deployed and have been validated against AWS for persistence, duplicate/conflicting submissions, callback retries, successful/rejected/failed results through the main callback pipeline, and real Request Handler HTTP timeout with retry exhaustion/DLQ. The Stage 12 log changes described above still require their own deployment and manual validation. No resources are provisioned by cloning, building or running the tests.
+The simulator and `timeout-` branch have been validated against AWS for
+persistence, duplicate/conflicting submissions, callback retries, terminal
+success/rejection/failure and Request Handler timeout with retry exhaustion/DLQ.
+Structured logging and automatic delivery are deployed. A green delivery smoke
+checks the success flow, not every failure scenario or log branch. Cloning,
+building and tests do not provision resources; configured main pushes deploy.
 
 The main callback pipeline is deployed. HTTPS is used without HMAC in the current agreed diagram and implementation. Deployment and end-to-end evidence are maintained in the infrastructure repository.
 
