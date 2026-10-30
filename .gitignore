@@ -9,3 +9,5 @@ coverage/
 *.suo
 *.zip
 .env
+__pycache__/
+*.pyc

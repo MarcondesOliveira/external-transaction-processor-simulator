@@ -75,13 +75,36 @@ directory and checks `ExternalProcessor.Simulator.dll`, `.deps.json` and
 `.runtimeconfig.json` before zipping. Both existing Lambda handlers remain unchanged;
 their entry points are in the same assembly and use the same deployment ZIP.
 The package job requests no AWS credentials/OIDC and performs no S3 upload or
-deployment. No new Bruno/Swagger test is required until a reviewed deployment.
+deployment. A successful main push now starts the downstream delivery workflow;
+manual HTTP checks belong after its deployment completes.
 
-### Manual S3 publication through OIDC
+### Automated delivery through OIDC
 
-`Publish Simulator artifact` (`.github/workflows/publish.yml`) is dispatch-only and
-restricted to `main`. It publishes an existing successful main CI run's bundle;
-it does not rebuild source, run Terraform or change the Lambda.
+`Deliver Simulator` (`.github/workflows/publish.yml`) runs after successful CI
+from a push to this repository's `main`. PRs, forks, manual CI and failed/cancelled
+CI do not automatically deploy. It publishes the exact verified CI bundle without
+rebuilding and dispatches the central Terraform workflow with the full commit and
+`service=external-transaction-processor-simulator`.
+
+The central workflow uses the simulator's separate Terraform state, updates both
+API and worker Lambdas to the same package, verifies both hashes/statuses and
+runs a synthetic transaction through the main Transaction API to final success.
+It does not update the main API, Request Handler or Callback Handler packages.
+Both function updates are required for success; they are not an atomic AWS
+operation. A partial failure is reported, not automatically rolled back.
+
+The `INFRA_WORKFLOW_TOKEN` secret is supplied only to dispatch/wait. It grants
+Actions access only to infrastructure, not AWS access; no token is kept in code,
+logs or workflow inputs. The caller follows the exact returned run ID and fails
+on dispatch errors, expired tokens or unsuccessful central runs. S3 upload alone
+is not deployment success. Missing early metadata/title evaluation may settle
+for at most two minutes; concrete wrong IDs/identities fail immediately, and a
+completed run must pass every identity check. Diagnostics exclude full payloads.
+
+Deliveries queue without replacing pending jobs. Central deployments serialize
+on the simulator stack, with Terraform locking enabled. The caller waits up to
+40 minutes; timeout does not cancel or redispatch a possibly active central run.
+Inspect its linked result before retrying. There is no automatic rollback.
 
 Repository variables hold deployment metadata outside source code:
 `AWS_REGION`, `AWS_ACCOUNT_ID`, `ARTIFACT_BUCKET` and `AWS_ARTIFACT_ROLE_ARN`.
@@ -90,7 +113,8 @@ verified immutable OIDC subject, audience STS and `main` branch. No environment
 name is configured on this job because that would change its subject format.
 
 1. Wait for the chosen `CI` run on `main` to succeed, including packaging.
-2. Open **Actions → Publish Simulator artifact → Run workflow**, select `main`, supply
+2. Normally a main push starts delivery automatically. For explicit manual delivery,
+   open **Actions → Deliver Simulator → Run workflow**, select `main`, supply
    the numeric `ci_run_id` and type `PUBLISH` in `confirmation`.
 3. The job checks the run's workflow path, repository, event, branch and conclusion,
    downloads its exact commit/run/attempt artifact, and verifies the fixed package
@@ -113,9 +137,15 @@ with the owner before any retry or cleanup; there is no automatic delete/rollbac
 An expired GitHub artifact cannot be published with this workflow. Do not rebuild
 the same commit and overwrite its existing S3 package to work around either case.
 
-After a successful upload, inspect the workflow and S3 evidence together. A manual
-Bruno/Swagger transaction adds no publication coverage because the running Lambda
-has not changed; end-to-end testing belongs to the later reviewed deploy.
+After upload, delivery waits for Terraform, both Lambda verifications and the
+end-to-end smoke. The exact central run URL is recorded in logs and summary.
+After success you can manually POST `/transactions` through the main API's Swagger
+or Bruno with synthetic data/new `Idempotency-Key`, then GET the resulting ID
+until `SUCCEEDED/APPROVED`. This exercises the simulator API and callback worker.
+The first real automatic simulator delivery still needs validation after push.
+
+Orchestration tests make no GitHub/AWS requests and also run in CI:
+`python3 -m unittest discover -s tests/delivery -v`.
 
 References: [AWS OIDC action](https://github.com/aws-actions/configure-aws-credentials),
 [S3 conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
